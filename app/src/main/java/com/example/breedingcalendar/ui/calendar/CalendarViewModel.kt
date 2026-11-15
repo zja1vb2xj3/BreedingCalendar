@@ -11,7 +11,6 @@ import com.example.breedingcalendar.data.entity.CustomEventType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import java.util.GregorianCalendar
@@ -71,25 +70,42 @@ class CalendarViewModel(application: Application) :
         }
     }
 
-    // 일정 삭제
+    // 개별 일정 삭제
     fun deleteEvent(event: CalendarEvent) {
         viewModelScope.launch {
             database.withTransaction {
                 if (event.isScheduled) {
-                    // 예정 일정만 삭제
                     dao.deleteEventById(event.id)
                 } else {
-                    // 실제 기록과 연결된 예정 일정 전체 삭제
                     dao.deleteScheduledEventBySourceId(event.id)
-
-                    // 원본 기록 삭제
                     dao.deleteEventById(event.id)
                 }
             }
         }
     }
 
-    // 월 이동
+    // 커스텀 일정 종류 삭제
+    fun deleteCustomEventTypes(typeIds: List<Long>) {
+        if (typeIds.isEmpty()) return
+
+        viewModelScope.launch {
+            database.withTransaction {
+                typeIds.distinct().forEach { typeId ->
+                    val sourceEventIds =
+                        dao.getSourceEventIdsByCustomEventTypeId(typeId)
+
+                    dao.deleteScheduledEventsByCustomEventTypeId(typeId)
+
+                    if (sourceEventIds.isNotEmpty()) {
+                        dao.deleteActualEventsByIds(sourceEventIds)
+                    }
+
+                    dao.deleteCustomEventTypeById(typeId)
+                }
+            }
+        }
+    }
+
     fun moveMonth(amount: Int) {
         val state = _uiState.value
 
@@ -107,7 +123,6 @@ class CalendarViewModel(application: Application) :
         )
     }
 
-    // 오늘로 이동
     fun goToToday() {
         val calendar = Calendar.getInstance()
 
@@ -122,17 +137,16 @@ class CalendarViewModel(application: Application) :
         )
     }
 
-    // 날짜 선택
     fun selectDate(date: Long) {
         _uiState.value = _uiState.value.copy(
             selectedDate = date
         )
     }
 
-    // 커스텀 일정 등록
     fun addCustomEventType(
         name: String,
-        intervalDays: Int
+        intervalDays: Int,
+        incrementNumber: Boolean
     ) {
         val safeName = name.trim()
 
@@ -142,110 +156,119 @@ class CalendarViewModel(application: Application) :
             dao.insertCustomEventType(
                 CustomEventType(
                     name = safeName,
-                    repeatIntervalDays = intervalDays
+                    repeatIntervalDays = intervalDays,
+                    memoFormat = "%s %d",
+                    incrementNumber = incrementNumber
                 )
             )
         }
     }
 
-    // 개체 번호의 순번 증가
-    // 예: 16 -> 17, 19 -> 110
-    private fun incrementIndividualNumber(
-        value: String
-    ): String? {
-        val safeValue = value.trim()
+    // 커스텀 일정 설정 수정
+    fun updateCustomEventType(type: CustomEventType) {
+        val safeName = type.name.trim()
 
-        // 앞부분은 개체 구분명, 뒷부분은 순번
-        val match = Regex("^(.+?)(\\d+)$").matchEntire(safeValue)
-            ?: return null
+        if (safeName.isBlank() || type.repeatIntervalDays < 0) return
 
-        val individualName = match.groupValues[1]
-        val sequence = match.groupValues[2].toIntOrNull()
-            ?: return null
-
-        return individualName + (sequence + 1)
+        viewModelScope.launch {
+            dao.updateCustomEventType(
+                type.copy(
+                    name = safeName
+                )
+            )
+        }
     }
 
-    // 커스텀 일정 선택 시 기록 및 예정일 생성
+    private fun createScheduledMemo(
+        individualGroup: String,
+        individualNumber: Int
+    ): String {
+        return "$individualGroup $individualNumber"
+    }
+
     fun addEvent(
-        type: CustomEventType,
+        types: List<CustomEventType>,
+        individualGroup: String,
+        individualNumber: Int,
         memo: String
     ) {
         val selectedDate = _uiState.value.selectedDate
+        val safeGroup = individualGroup.trim()
         val safeMemo = memo.trim()
+
+        if (safeGroup.isBlank()) return
+
+        // 실제 등록일에는 첫 번째 커스텀 일정 이름만 사용
+        val firstSelectedTypeName = types
+            .map { it.name }
+            .distinct()
+            .firstOrNull()
+
+        val recordMemoParts = mutableListOf<String>()
+
+        if (!firstSelectedTypeName.isNullOrBlank()) {
+            recordMemoParts.add(firstSelectedTypeName)
+        }
+
+        if (
+            safeMemo.isNotBlank() &&
+            safeMemo !in recordMemoParts
+        ) {
+            recordMemoParts.add(safeMemo)
+        }
+
+        val recordMemo = recordMemoParts.joinToString(" ")
 
         viewModelScope.launch {
             database.withTransaction {
 
-                // 원본 기록 저장
+                // 실제 기록은 한 번만 생성
                 val eventId = dao.insertEvent(
                     CalendarEvent(
-                        eventName = type.name,
-                        customEventTypeId = type.id,
+                        eventName = "메모",
+                        customEventTypeId = null,
                         eventDate = selectedDate,
                         isScheduled = false,
-                        memo = safeMemo
+                        individualGroup = safeGroup,
+                        individualNumber = individualNumber,
+                        memo = recordMemo
                     )
                 )
 
-                if (type.name.trim() == "산란") {
+                // 예정 일정은 선택한 커스텀 일정 전체를 대상으로 생성
+                val scheduledEvents = types
+                    .filter { it.repeatIntervalDays > 0 }
+                    .map { type ->
 
-                    val nextMemo = incrementIndividualNumber(safeMemo)
+                        val scheduledNumber =
+                            individualNumber +
+                                    if (type.incrementNumber) 1 else 0
 
-                    if (nextMemo != null) {
-
-                        val scheduledEvents = mutableListOf<CalendarEvent>()
-
-                        // 다음 산란 예정일
-                        if (type.repeatIntervalDays > 0) {
-                            scheduledEvents.add(
-                                CalendarEvent(
-                                    eventName = type.name,
-                                    customEventTypeId = type.id,
-                                    eventDate = selectedDate + type.repeatIntervalDays,
-                                    isScheduled = true,
-                                    sourceEventId = eventId,
-                                    memo = nextMemo
-                                )
-                            )
-                        }
-
-                        // 해칭 예정일: 산란일 기준 80일
-                        scheduledEvents.add(
-                            CalendarEvent(
-                                eventName = "해칭",
-                                customEventTypeId = type.id,
-                                eventDate = selectedDate + 80,
-                                isScheduled = true,
-                                sourceEventId = eventId,
-                                memo = safeMemo
-                            )
+                        val scheduledMemo = createScheduledMemo(
+                            individualGroup = safeGroup,
+                            individualNumber = scheduledNumber
                         )
 
-                        if (scheduledEvents.isNotEmpty()) {
-                            dao.insertEvents(scheduledEvents)
-                        }
-                    }
-
-                } else if (type.repeatIntervalDays > 0) {
-
-                    // 일반 커스텀 일정은 기존 반복 주기 유지
-                    dao.insertEvent(
                         CalendarEvent(
                             eventName = type.name,
                             customEventTypeId = type.id,
-                            eventDate = selectedDate + type.repeatIntervalDays,
+                            eventDate = selectedDate +
+                                    type.repeatIntervalDays,
                             isScheduled = true,
                             sourceEventId = eventId,
-                            memo = safeMemo
+                            individualGroup = safeGroup,
+                            individualNumber = scheduledNumber,
+                            memo = scheduledMemo
                         )
-                    )
+                    }
+
+                if (scheduledEvents.isNotEmpty()) {
+                    dao.insertEvents(scheduledEvents)
                 }
             }
         }
     }
 
-    // 커스텀 일정 미선택 시 메모만 기록
     fun addMemoEvent(memo: String) {
         val safeMemo = memo.trim()
 

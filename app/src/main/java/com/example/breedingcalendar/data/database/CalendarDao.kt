@@ -14,14 +14,12 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface CalendarDao {
 
-    // 모든 일정 조회
     @Query("""
         SELECT * FROM calendar_events
         ORDER BY eventDate ASC, id ASC
     """)
     fun getAllEvents(): Flow<List<CalendarEvent>>
 
-    // 특정 날짜 일정 조회
     @Query("""
         SELECT * FROM calendar_events
         WHERE eventDate = :date
@@ -29,7 +27,6 @@ interface CalendarDao {
     """)
     fun getEventsByDate(date: Long): Flow<List<CalendarEvent>>
 
-    // 날짜 범위 일정 조회
     @Query("""
         SELECT * FROM calendar_events
         WHERE eventDate BETWEEN :startDate AND :endDate
@@ -40,7 +37,6 @@ interface CalendarDao {
         endDate: Long
     ): Flow<List<CalendarEvent>>
 
-    // 일정 ID로 조회
     @Query("""
         SELECT * FROM calendar_events
         WHERE id = :eventId
@@ -48,7 +44,6 @@ interface CalendarDao {
     """)
     suspend fun getEventById(eventId: Long): CalendarEvent?
 
-    // 원본 기록으로 생성된 예정 일정 전체 조회
     @Query("""
         SELECT * FROM calendar_events
         WHERE sourceEventId = :sourceEventId
@@ -58,7 +53,6 @@ interface CalendarDao {
         sourceEventId: Long
     ): List<CalendarEvent>
 
-    // 기존 단일 조회 메서드 유지
     @Query("""
         SELECT * FROM calendar_events
         WHERE sourceEventId = :sourceEventId
@@ -69,30 +63,24 @@ interface CalendarDao {
         sourceEventId: Long
     ): CalendarEvent?
 
-    // 일정 추가
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertEvent(event: CalendarEvent): Long
 
-    // 여러 일정 추가
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertEvents(events: List<CalendarEvent>)
 
-    // 일정 수정
     @Update
     suspend fun updateEvent(event: CalendarEvent)
 
-    // 일정 삭제
     @Delete
     suspend fun deleteEvent(event: CalendarEvent)
 
-    // 일정 ID로 삭제
     @Query("""
         DELETE FROM calendar_events
         WHERE id = :eventId
     """)
     suspend fun deleteEventById(eventId: Long)
 
-    // 원본 기록에 연결된 예정 일정 전체 삭제
     @Query("""
         DELETE FROM calendar_events
         WHERE sourceEventId = :sourceEventId
@@ -102,18 +90,47 @@ interface CalendarDao {
         sourceEventId: Long
     )
 
-    // 전체 일정 삭제
+    // 특정 커스텀 일정에 연결된 기록 ID 조회
+    @Query("""
+        SELECT DISTINCT sourceEventId
+        FROM calendar_events
+        WHERE customEventTypeId = :typeId
+        AND isScheduled = 1
+        AND sourceEventId IS NOT NULL
+    """)
+    suspend fun getSourceEventIdsByCustomEventTypeId(
+        typeId: Long
+    ): List<Long>
+
+    // 선택한 커스텀 일정으로 생성된 예정 일정만 삭제
+    @Query("""
+        DELETE FROM calendar_events
+        WHERE customEventTypeId = :typeId
+        AND isScheduled = 1
+    """)
+    suspend fun deleteScheduledEventsByCustomEventTypeId(
+        typeId: Long
+    )
+
+    // 해당 커스텀 일정과 연결된 실제 기록 삭제
+    @Query("""
+        DELETE FROM calendar_events
+        WHERE id IN (:eventIds)
+        AND isScheduled = 0
+    """)
+    suspend fun deleteActualEventsByIds(
+        eventIds: List<Long>
+    )
+
     @Query("DELETE FROM calendar_events")
     suspend fun deleteAllEvents()
 
-    // 모든 커스텀 일정 유형 조회
     @Query("""
         SELECT * FROM custom_event_types
         ORDER BY id ASC
     """)
     fun getAllCustomEventTypes(): Flow<List<CustomEventType>>
 
-    // 활성화된 커스텀 일정 유형 조회
     @Query("""
         SELECT * FROM custom_event_types
         WHERE isActive = 1
@@ -121,7 +138,6 @@ interface CalendarDao {
     """)
     fun getActiveCustomEventTypes(): Flow<List<CustomEventType>>
 
-    // 커스텀 일정 유형 ID로 조회
     @Query("""
         SELECT * FROM custom_event_types
         WHERE id = :typeId
@@ -131,34 +147,28 @@ interface CalendarDao {
         typeId: Long
     ): CustomEventType?
 
-    // 커스텀 일정 유형 추가
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertCustomEventType(
         type: CustomEventType
     ): Long
 
-    // 여러 커스텀 일정 유형 추가
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertCustomEventTypes(
         types: List<CustomEventType>
     )
 
-    // 커스텀 일정 유형 수정
     @Update
     suspend fun updateCustomEventType(type: CustomEventType)
 
-    // 커스텀 일정 유형 삭제
     @Delete
     suspend fun deleteCustomEventType(type: CustomEventType)
 
-    // 커스텀 일정 유형 ID로 삭제
     @Query("""
         DELETE FROM custom_event_types
         WHERE id = :typeId
     """)
     suspend fun deleteCustomEventTypeById(typeId: Long)
 
-    // 전체 커스텀 일정 유형 삭제
     @Query("DELETE FROM custom_event_types")
     suspend fun deleteAllCustomEventTypes()
 }

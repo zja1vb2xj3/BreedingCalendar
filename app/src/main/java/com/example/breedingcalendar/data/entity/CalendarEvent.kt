@@ -1,5 +1,6 @@
 package com.example.breedingcalendar.data.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -13,7 +14,6 @@ import androidx.room.PrimaryKey
     ]
 )
 data class CalendarEvent(
-
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
 
@@ -32,7 +32,14 @@ data class CalendarEvent(
     // 예정 일정을 생성한 원본 기록 ID
     val sourceEventId: Long? = null,
 
-    // 메모
+    // 개체 구분
+    @ColumnInfo(defaultValue = "''")
+    val individualGroup: String = "",
+
+    // 개체 번호
+    val individualNumber: Int? = null,
+
+    // 자유 메모 또는 자동 생성 메모
     val memo: String = "",
 
     // 생성 시각
