@@ -1,8 +1,10 @@
 
 package com.example.breedingcalendar.ui.calendar
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.breedingcalendar.data.entity.CalendarEvent
@@ -59,6 +62,19 @@ fun CalendarScreen(
 
     var showAddDialog by remember {
         mutableStateOf(false)
+    }
+
+    var showCustomTypeDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var menuExpanded by remember {
+        mutableStateOf(false)
+    }
+
+    // 삭제 확인 대상 일정
+    var eventToDelete by remember {
+        mutableStateOf<CalendarEvent?>(null)
     }
 
     val selectedEvents = state.events.filter {
@@ -86,23 +102,49 @@ fun CalendarScreen(
                     .padding(horizontal = 16.dp)
             ) {
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
-                // 상단 타이틀
+                // 좌측 상단 더보기 메뉴
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Breeding Calendar",
-                        color = CalendarText,
-                        fontSize = 23.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Box {
+                        TextButton(
+                            onClick = {
+                                menuExpanded = true
+                            }
+                        ) {
+                            Text(
+                                text = "⋮",
+                                color = CalendarText,
+                                fontSize = 28.sp
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = {
+                                menuExpanded = false
+                            }
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text("커스텀 일정 추가")
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    showCustomTypeDialog = true
+                                }
+                            )
+                        }
+                    }
 
                     TextButton(
-                        onClick = { viewModel.goToToday() }
+                        onClick = {
+                            viewModel.goToToday()
+                        }
                     ) {
                         Text(
                             text = "오늘",
@@ -111,7 +153,7 @@ fun CalendarScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(22.dp))
+                Spacer(modifier = Modifier.height(28.dp))
 
                 // 월 이동 영역
                 Row(
@@ -168,7 +210,7 @@ fun CalendarScreen(
                         Text(
                             text = day,
                             modifier = Modifier.weight(1f),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            textAlign = TextAlign.Center,
                             color = if (index == 0) {
                                 Color(0xFFE57373)
                             } else if (index == 6) {
@@ -244,17 +286,13 @@ fun CalendarScreen(
                                         val isSelected =
                                             date == state.selectedDate
 
+                                        val today = Calendar.getInstance()
+
                                         val isToday =
                                             date == CalendarViewModel.dateToEpochDay(
-                                                Calendar.getInstance().get(
-                                                    Calendar.YEAR
-                                                ),
-                                                Calendar.getInstance().get(
-                                                    Calendar.MONTH
-                                                ),
-                                                Calendar.getInstance().get(
-                                                    Calendar.DAY_OF_MONTH
-                                                )
+                                                today.get(Calendar.YEAR),
+                                                today.get(Calendar.MONTH),
+                                                today.get(Calendar.DAY_OF_MONTH)
                                             )
 
                                         val hasEvents =
@@ -378,7 +416,24 @@ fun CalendarScreen(
                 } else {
                     LazyColumn {
                         items(selectedEvents) { event ->
-                            EventItem(event)
+
+                            // 예정 일정의 원본 기록 찾기
+                            val sourceEvent = if (event.isScheduled) {
+                                state.events.firstOrNull {
+                                    it.id == event.sourceEventId
+                                }
+                            } else {
+                                null
+                            }
+
+                            EventItem(
+                                event = event,
+                                sourceMemo = sourceEvent?.memo.orEmpty(),
+                                onLongClick = {
+                                    // 바로 삭제하지 않고 확인 팝업 표시
+                                    eventToDelete = event
+                                }
+                            )
                         }
                     }
                 }
@@ -386,28 +441,115 @@ fun CalendarScreen(
         }
     }
 
+    // 일반 일정 추가 팝업
     if (showAddDialog) {
         AddEventDialog(
             customEventTypes = state.customEventTypes,
             onDismiss = {
                 showAddDialog = false
             },
-            onSave = { type, memo ->
+            onSaveCustom = { type, memo ->
+                // 메모 입력 여부와 관계없이 커스텀 일정으로 저장
                 viewModel.addEvent(type, memo)
                 showAddDialog = false
+            },
+            onSaveMemo = { memo ->
+                // 커스텀 일정 미선택일 때만 메모 일정으로 저장
+                viewModel.addMemoEvent(memo)
+                showAddDialog = false
+            }
+        )
+    }
+
+    // 커스텀 일정 등록 팝업
+    if (showCustomTypeDialog) {
+        AddCustomEventTypeDialog(
+            onDismiss = {
+                showCustomTypeDialog = false
+            },
+            onSave = { name, intervalDays ->
+                viewModel.addCustomEventType(name, intervalDays)
+                showCustomTypeDialog = false
+            }
+        )
+    }
+
+    // 일정 삭제 확인 팝업
+    eventToDelete?.let { event ->
+        AlertDialog(
+            onDismissRequest = {
+                eventToDelete = null
+            },
+            containerColor = CalendarSurface,
+            title = {
+                Text(
+                    text = "일정 삭제",
+                    color = CalendarText,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "삭제하시겠습니까?",
+                    color = CalendarText
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteEvent(event)
+                        eventToDelete = null
+                    }
+                ) {
+                    Text(
+                        text = "확인",
+                        color = CalendarAccent
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        eventToDelete = null
+                    }
+                ) {
+                    Text(
+                        text = "취소",
+                        color = CalendarSubText
+                    )
+                }
             }
         )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EventItem(
-    event: CalendarEvent
+    event: CalendarEvent,
+    sourceMemo: String = "",
+    onLongClick: () -> Unit
 ) {
+    val displayName = if (event.isScheduled) {
+        val memoPrefix = sourceMemo.trim()
+
+        if (memoPrefix.isNotBlank()) {
+            "$memoPrefix ${event.eventName}예정일"
+        } else {
+            "${event.eventName} 예정일"
+        }
+    } else {
+        event.eventName
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 5.dp)
+            .combinedClickable(
+                onClick = {},
+                onLongClick = onLongClick
+            )
             .background(
                 CalendarSurface,
                 RoundedCornerShape(10.dp)
@@ -434,12 +576,12 @@ private fun EventItem(
                 .weight(1f)
         ) {
             Text(
-                text = event.eventName,
+                text = displayName,
                 color = CalendarText,
                 fontWeight = FontWeight.Medium
             )
 
-            if (event.memo.isNotBlank()) {
+            if (!event.isScheduled && event.memo.isNotBlank()) {
                 Text(
                     text = event.memo,
                     color = CalendarSubText,
@@ -464,7 +606,8 @@ private fun EventItem(
 private fun AddEventDialog(
     customEventTypes: List<CustomEventType>,
     onDismiss: () -> Unit,
-    onSave: (CustomEventType, String) -> Unit
+    onSaveCustom: (CustomEventType, String) -> Unit,
+    onSaveMemo: (String) -> Unit
 ) {
     var expanded by remember {
         mutableStateOf(false)
@@ -491,79 +634,183 @@ private fun AddEventDialog(
         text = {
             Column {
 
-                if (customEventTypes.isEmpty()) {
-                    Text(
-                        text = "등록된 커스텀 일정 유형이 없습니다.\n먼저 커스텀 일정을 추가해 주세요.",
-                        color = CalendarSubText
-                    )
-                } else {
-
-                    Box {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    expanded = true
-                                },
-                            color = Color(0xFF303030),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = selectedType?.name
-                                    ?: "일정 유형 선택",
-                                color = CalendarText,
-                                modifier = Modifier.padding(14.dp)
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = {
-                                expanded = false
-                            }
-                        ) {
-                            customEventTypes.forEach { type ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(type.name)
-                                    },
-                                    onClick = {
-                                        selectedType = type
-                                        expanded = false
-                                    }
-                                )
-                            }
-                        }
+                // 커스텀 일정 선택
+                Box {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                expanded = true
+                            },
+                        color = Color(0xFF303030),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = selectedType?.name
+                                ?: "커스텀 일정 선택 (선택 사항)",
+                            color = CalendarText,
+                            modifier = Modifier.padding(14.dp)
+                        )
                     }
 
-                    Spacer(
-                        modifier = Modifier.height(14.dp)
-                    )
-
-                    OutlinedTextField(
-                        value = memo,
-                        onValueChange = {
-                            memo = it
-                        },
-                        label = {
-                            Text("메모")
-                        },
-                        placeholder = {
-                            Text("메모를 입력하세요.")
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    DropdownMenu(
+                        expanded = expanded,
+                        onDismissRequest = {
+                            expanded = false
+                        }
+                    ) {
+                        customEventTypes.forEach { type ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(type.name)
+                                },
+                                onClick = {
+                                    selectedType = type
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
                 }
+
+                Spacer(
+                    modifier = Modifier.height(14.dp)
+                )
+
+                // 메모 입력
+                OutlinedTextField(
+                    value = memo,
+                    onValueChange = {
+                        memo = it
+                    },
+                    label = {
+                        Text("메모")
+                    },
+                    placeholder = {
+                        Text("메모를 입력하세요.")
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(
+                    modifier = Modifier.height(6.dp)
+                )
+
+                Text(
+                    text = if (selectedType == null) {
+                        "커스텀 일정을 선택하지 않으면 메모만 저장됩니다."
+                    } else {
+                        "선택한 커스텀 일정의 주기에 따라 예정일이 생성됩니다."
+                    },
+                    color = CalendarSubText,
+                    fontSize = 12.sp
+                )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    selectedType?.let {
-                        onSave(it, memo)
+                    val type = selectedType
+
+                    if (type != null) {
+                        // 커스텀 일정이 선택되어 있으면 메모 유무와 무관하게 실행
+                        onSaveCustom(type, memo)
+                    } else if (memo.isNotBlank()) {
+                        // 일정 유형을 선택하지 않은 경우 메모만 저장
+                        onSaveMemo(memo)
                     }
                 },
-                enabled = selectedType != null
+                enabled = selectedType != null || memo.isNotBlank()
+            ) {
+                Text("저장")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss
+            ) {
+                Text("취소")
+            }
+        }
+    )
+}
+
+@Composable
+private fun AddCustomEventTypeDialog(
+    onDismiss: () -> Unit,
+    onSave: (String, Int) -> Unit
+) {
+    var name by remember {
+        mutableStateOf("")
+    }
+
+    var intervalText by remember {
+        mutableStateOf("")
+    }
+
+    val interval = intervalText.toIntOrNull()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CalendarSurface,
+        title = {
+            Text(
+                text = "커스텀 일정 추가",
+                color = CalendarText,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column {
+
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it
+                    },
+                    label = {
+                        Text("알림 이름")
+                    },
+                    placeholder = {
+                        Text("예: 메이팅")
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(
+                    modifier = Modifier.height(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = intervalText,
+                    onValueChange = { value ->
+                        if (
+                            value.isEmpty() ||
+                            value.all { it.isDigit() }
+                        ) {
+                            intervalText = value
+                        }
+                    },
+                    label = {
+                        Text("알림 주기 (Day)")
+                    },
+                    placeholder = {
+                        Text("예: 30")
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(name.trim(), interval!!)
+                },
+                enabled = name.isNotBlank() &&
+                        interval != null &&
+                        interval >= 0
             ) {
                 Text("저장")
             }

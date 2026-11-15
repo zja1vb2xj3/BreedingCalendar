@@ -1,4 +1,3 @@
-
 package com.example.breedingcalendar.ui.calendar
 
 import android.app.Application
@@ -25,13 +24,10 @@ data class CalendarUiState(
     val customEventTypes: List<CustomEventType> = emptyList()
 )
 
-class CalendarViewModel(
-    application: Application
-) : AndroidViewModel(application) {
+class CalendarViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = AppDatabase.getDatabase(application)
     private val dao = database.calendarDao()
-
     private val today = Calendar.getInstance()
 
     private val _uiState = MutableStateFlow(
@@ -56,9 +52,22 @@ class CalendarViewModel(
     private fun observeEvents() {
         viewModelScope.launch {
             dao.getAllEvents().collect { events ->
-                _uiState.value = _uiState.value.copy(
-                    events = events
-                )
+                _uiState.value = _uiState.value.copy(events = events)
+            }
+        }
+    }
+
+    fun deleteEvent(event: CalendarEvent) {
+        viewModelScope.launch {
+            database.withTransaction {
+                if (event.isScheduled) {
+                    // 예정 일정만 삭제
+                    dao.deleteEventById(event.id)
+                } else {
+                    // 실제 기록과 연결된 예정 일정 삭제
+                    dao.deleteScheduledEventBySourceId(event.id)
+                    dao.deleteEventById(event.id)
+                }
             }
         }
     }
@@ -66,16 +75,13 @@ class CalendarViewModel(
     private fun observeCustomEventTypes() {
         viewModelScope.launch {
             dao.getActiveCustomEventTypes().collect { types ->
-                _uiState.value = _uiState.value.copy(
-                    customEventTypes = types
-                )
+                _uiState.value = _uiState.value.copy(customEventTypes = types)
             }
         }
     }
 
     fun moveMonth(amount: Int) {
         val state = _uiState.value
-
         val calendar = GregorianCalendar(
             state.currentYear,
             state.currentMonth,
@@ -110,43 +116,78 @@ class CalendarViewModel(
         )
     }
 
+    // 커스텀 일정 등록
+    fun addCustomEventType(
+        name: String,
+        intervalDays: Int
+    ) {
+        val safeName = name.trim()
+
+        if (safeName.isBlank() || intervalDays < 0) return
+
+        viewModelScope.launch {
+            dao.insertCustomEventType(
+                CustomEventType(
+                    name = safeName,
+                    repeatIntervalDays = intervalDays
+                )
+            )
+        }
+    }
+
+    // 커스텀 일정 선택 시 기록 및 예정일 생성
     fun addEvent(
         type: CustomEventType,
         memo: String
     ) {
-        val state = _uiState.value
+        val selectedDate = _uiState.value.selectedDate
 
         viewModelScope.launch {
             database.withTransaction {
-
-                val event = CalendarEvent(
-                    eventName = type.name,
-                    customEventTypeId = type.id,
-                    eventDate = state.selectedDate,
-                    isScheduled = false,
-                    memo = memo
-                )
-
-                val eventId = dao.insertEvent(event)
-
-                // 반복 주기가 0일이면 다음 일정 생성 안 함
-                if (type.repeatIntervalDays > 0) {
-
-                    val scheduledDate =
-                        state.selectedDate + type.repeatIntervalDays
-
-                    val scheduledEvent = CalendarEvent(
+                val eventId = dao.insertEvent(
+                    CalendarEvent(
                         eventName = type.name,
                         customEventTypeId = type.id,
-                        eventDate = scheduledDate,
-                        isScheduled = true,
-                        sourceEventId = eventId,
-                        memo = ""
+                        eventDate = selectedDate,
+                        isScheduled = false,
+                        memo = memo
                     )
+                )
 
-                    dao.insertEvent(scheduledEvent)
+                if (type.repeatIntervalDays > 0) {
+                    dao.insertEvent(
+                        CalendarEvent(
+                            eventName = type.name,
+                            customEventTypeId = type.id,
+                            eventDate = selectedDate + type.repeatIntervalDays,
+                            isScheduled = true,
+                            sourceEventId = eventId,
+                            memo = ""
+                        )
+                    )
                 }
             }
+        }
+    }
+
+    // 커스텀 일정 미선택 시 메모만 기록
+    fun addMemoEvent(memo: String) {
+        val safeMemo = memo.trim()
+
+        if (safeMemo.isBlank()) return
+
+        val selectedDate = _uiState.value.selectedDate
+
+        viewModelScope.launch {
+            dao.insertEvent(
+                CalendarEvent(
+                    eventName = "메모",
+                    customEventTypeId = null,
+                    eventDate = selectedDate,
+                    isScheduled = false,
+                    memo = safeMemo
+                )
+            )
         }
     }
 
@@ -157,7 +198,6 @@ class CalendarViewModel(
             month: Int,
             day: Int
         ): Long {
-
             val calendar = GregorianCalendar(
                 TimeZone.getTimeZone("UTC")
             )
@@ -169,7 +209,6 @@ class CalendarViewModel(
         }
 
         fun epochDayToCalendar(epochDay: Long): Calendar {
-
             val calendar = GregorianCalendar(
                 TimeZone.getTimeZone("UTC")
             )

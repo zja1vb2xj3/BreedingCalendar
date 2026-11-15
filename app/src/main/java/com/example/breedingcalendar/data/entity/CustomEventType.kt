@@ -1,4 +1,3 @@
-
 package com.example.breedingcalendar.data.entity
 
 import androidx.room.Entity
@@ -12,11 +11,11 @@ data class CustomEventType(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
 
-    // 사용자가 지정한 일정 이름
+    // 사용자가 지정한 알림 이름
     val name: String,
 
-    // 다음 일정까지의 반복 주기 (일)
-    // 0이면 반복 일정 생성 안 함
+    // 알림 주기 (Day)
+    // 0이면 예정 일정 생성 안 함
     val repeatIntervalDays: Int = 0,
 
     // 일정 유형 사용 여부
