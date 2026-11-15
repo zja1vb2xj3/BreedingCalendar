@@ -1,4 +1,3 @@
-
 package com.example.breedingcalendar.ui.calendar
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -334,7 +333,7 @@ fun CalendarScreen(
                                         .weight(1f)
                                         .then(
                                             if (isCalendarExpanded) {
-                                                Modifier.height(88.dp)
+                                                Modifier.height(72.dp)
                                             } else {
                                                 Modifier.aspectRatio(0.78f)
                                             }
@@ -539,33 +538,43 @@ fun CalendarScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                if (selectedEvents.isEmpty()) {
-                    Text(
-                        text = "등록된 일정이 없습니다.",
-                        color = CalendarSubText,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(vertical = 12.dp)
-                    )
-                } else {
-                    LazyColumn {
-                        items(selectedEvents) { event ->
+                // 일정 목록 영역
+                // 남은 화면 높이를 차지하도록 하여 LazyColumn 스크롤 활성화
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    if (selectedEvents.isEmpty()) {
+                        Text(
+                            text = "등록된 일정이 없습니다.",
+                            color = CalendarSubText,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(selectedEvents) { event ->
 
-                            // 예정 일정의 원본 기록 찾기
-                            val sourceEvent = if (event.isScheduled) {
-                                state.events.firstOrNull {
-                                    it.id == event.sourceEventId
+                                // 예정 일정의 원본 기록 찾기
+                                val sourceEvent = if (event.isScheduled) {
+                                    state.events.firstOrNull {
+                                        it.id == event.sourceEventId
+                                    }
+                                } else {
+                                    null
                                 }
-                            } else {
-                                null
+
+                                EventItem(
+                                    event = event,
+                                    sourceMemo = sourceEvent?.memo.orEmpty(),
+                                    onLongClick = {
+                                        eventToDelete = event
+                                    }
+                                )
                             }
-
-                            EventItem(
-                                event = event,
-                                sourceMemo = sourceEvent?.memo.orEmpty(),
-                                onLongClick = {
-                                    eventToDelete = event
-                                }
-                            )
                         }
                     }
                 }
