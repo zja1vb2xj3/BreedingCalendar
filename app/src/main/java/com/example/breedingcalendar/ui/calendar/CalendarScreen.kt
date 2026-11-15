@@ -449,9 +449,12 @@ fun CalendarScreen(
                                                             }
 
                                                         // 실제 기록은 메모 + 일정 이름 순서
+
                                                         val displayText =
                                                             if (event.isScheduled) {
-                                                                val prefix = sourceEvent?.memo?.trim().orEmpty()
+                                                                val prefix = event.memo.trim().ifBlank {
+                                                                    sourceEvent?.memo?.trim().orEmpty()
+                                                                }
 
                                                                 if (prefix.isNotBlank()) {
                                                                     "$prefix ${event.eventName}예정일"
@@ -465,6 +468,7 @@ fun CalendarScreen(
                                                                     event.eventName
                                                                 }
                                                             }
+
 
                                                         Text(
                                                             text = displayText,
@@ -671,8 +675,11 @@ private fun EventItem(
 ) {
     // 실제 기록은 메모 + 일정 이름 순서
     // 예정 일정은 기존 표시 방식 유지
+
     val displayName = if (event.isScheduled) {
-        val memoPrefix = sourceMemo.trim()
+        val memoPrefix = event.memo.trim().ifBlank {
+            sourceMemo.trim()
+        }
 
         if (memoPrefix.isNotBlank()) {
             "$memoPrefix ${event.eventName}예정일"
@@ -686,6 +693,7 @@ private fun EventItem(
             event.eventName
         }
     }
+
 
     Row(
         modifier = Modifier

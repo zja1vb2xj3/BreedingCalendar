@@ -1,3 +1,4 @@
+
 package com.example.breedingcalendar.data.database
 
 import androidx.room.Dao
@@ -47,11 +48,22 @@ interface CalendarDao {
     """)
     suspend fun getEventById(eventId: Long): CalendarEvent?
 
-    // 원본 기록으로 생성된 예정 일정 조회
+    // 원본 기록으로 생성된 예정 일정 전체 조회
     @Query("""
         SELECT * FROM calendar_events
         WHERE sourceEventId = :sourceEventId
         AND isScheduled = 1
+    """)
+    suspend fun getScheduledEventsBySourceId(
+        sourceEventId: Long
+    ): List<CalendarEvent>
+
+    // 기존 단일 조회 메서드 유지
+    @Query("""
+        SELECT * FROM calendar_events
+        WHERE sourceEventId = :sourceEventId
+        AND isScheduled = 1
+        LIMIT 1
     """)
     suspend fun getScheduledEventBySourceId(
         sourceEventId: Long
@@ -80,7 +92,7 @@ interface CalendarDao {
     """)
     suspend fun deleteEventById(eventId: Long)
 
-    // 원본 기록에 연결된 예정 일정 삭제
+    // 원본 기록에 연결된 예정 일정 전체 삭제
     @Query("""
         DELETE FROM calendar_events
         WHERE sourceEventId = :sourceEventId

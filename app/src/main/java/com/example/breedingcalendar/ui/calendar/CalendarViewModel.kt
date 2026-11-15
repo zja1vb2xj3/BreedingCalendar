@@ -1,3 +1,4 @@
+
 package com.example.breedingcalendar.ui.calendar
 
 import android.app.Application
@@ -24,7 +25,8 @@ data class CalendarUiState(
     val customEventTypes: List<CustomEventType> = emptyList()
 )
 
-class CalendarViewModel(application: Application) : AndroidViewModel(application) {
+class CalendarViewModel(application: Application) :
+    AndroidViewModel(application) {
 
     private val database = AppDatabase.getDatabase(application)
     private val dao = database.calendarDao()
@@ -52,22 +54,9 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     private fun observeEvents() {
         viewModelScope.launch {
             dao.getAllEvents().collect { events ->
-                _uiState.value = _uiState.value.copy(events = events)
-            }
-        }
-    }
-
-    fun deleteEvent(event: CalendarEvent) {
-        viewModelScope.launch {
-            database.withTransaction {
-                if (event.isScheduled) {
-                    // 예정 일정만 삭제
-                    dao.deleteEventById(event.id)
-                } else {
-                    // 실제 기록과 연결된 예정 일정 삭제
-                    dao.deleteScheduledEventBySourceId(event.id)
-                    dao.deleteEventById(event.id)
-                }
+                _uiState.value = _uiState.value.copy(
+                    events = events
+                )
             }
         }
     }
@@ -75,13 +64,35 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
     private fun observeCustomEventTypes() {
         viewModelScope.launch {
             dao.getActiveCustomEventTypes().collect { types ->
-                _uiState.value = _uiState.value.copy(customEventTypes = types)
+                _uiState.value = _uiState.value.copy(
+                    customEventTypes = types
+                )
             }
         }
     }
 
+    // 일정 삭제
+    fun deleteEvent(event: CalendarEvent) {
+        viewModelScope.launch {
+            database.withTransaction {
+                if (event.isScheduled) {
+                    // 예정 일정만 삭제
+                    dao.deleteEventById(event.id)
+                } else {
+                    // 실제 기록과 연결된 예정 일정 전체 삭제
+                    dao.deleteScheduledEventBySourceId(event.id)
+
+                    // 원본 기록 삭제
+                    dao.deleteEventById(event.id)
+                }
+            }
+        }
+    }
+
+    // 월 이동
     fun moveMonth(amount: Int) {
         val state = _uiState.value
+
         val calendar = GregorianCalendar(
             state.currentYear,
             state.currentMonth,
@@ -96,6 +107,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
+    // 오늘로 이동
     fun goToToday() {
         val calendar = Calendar.getInstance()
 
@@ -110,6 +122,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
+    // 날짜 선택
     fun selectDate(date: Long) {
         _uiState.value = _uiState.value.copy(
             selectedDate = date
@@ -135,26 +148,88 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    // 개체 번호의 순번 증가
+    // 예: 16 -> 17, 19 -> 110
+    private fun incrementIndividualNumber(
+        value: String
+    ): String? {
+        val safeValue = value.trim()
+
+        // 앞부분은 개체 구분명, 뒷부분은 순번
+        val match = Regex("^(.+?)(\\d+)$").matchEntire(safeValue)
+            ?: return null
+
+        val individualName = match.groupValues[1]
+        val sequence = match.groupValues[2].toIntOrNull()
+            ?: return null
+
+        return individualName + (sequence + 1)
+    }
+
     // 커스텀 일정 선택 시 기록 및 예정일 생성
     fun addEvent(
         type: CustomEventType,
         memo: String
     ) {
         val selectedDate = _uiState.value.selectedDate
+        val safeMemo = memo.trim()
 
         viewModelScope.launch {
             database.withTransaction {
+
+                // 원본 기록 저장
                 val eventId = dao.insertEvent(
                     CalendarEvent(
                         eventName = type.name,
                         customEventTypeId = type.id,
                         eventDate = selectedDate,
                         isScheduled = false,
-                        memo = memo
+                        memo = safeMemo
                     )
                 )
 
-                if (type.repeatIntervalDays > 0) {
+                if (type.name.trim() == "산란") {
+
+                    val nextMemo = incrementIndividualNumber(safeMemo)
+
+                    if (nextMemo != null) {
+
+                        val scheduledEvents = mutableListOf<CalendarEvent>()
+
+                        // 다음 산란 예정일
+                        if (type.repeatIntervalDays > 0) {
+                            scheduledEvents.add(
+                                CalendarEvent(
+                                    eventName = type.name,
+                                    customEventTypeId = type.id,
+                                    eventDate = selectedDate + type.repeatIntervalDays,
+                                    isScheduled = true,
+                                    sourceEventId = eventId,
+                                    memo = nextMemo
+                                )
+                            )
+                        }
+
+                        // 해칭 예정일: 산란일 기준 80일
+                        scheduledEvents.add(
+                            CalendarEvent(
+                                eventName = "해칭",
+                                customEventTypeId = type.id,
+                                eventDate = selectedDate + 80,
+                                isScheduled = true,
+                                sourceEventId = eventId,
+                                memo = safeMemo
+                            )
+                        )
+
+                        if (scheduledEvents.isNotEmpty()) {
+                            dao.insertEvents(scheduledEvents)
+                        }
+                    }
+
+                } else if (type.repeatIntervalDays > 0) {
+
+                    // 일반 커스텀 일정은 기존 반복 주기 유지
                     dao.insertEvent(
                         CalendarEvent(
                             eventName = type.name,
@@ -162,7 +237,7 @@ class CalendarViewModel(application: Application) : AndroidViewModel(application
                             eventDate = selectedDate + type.repeatIntervalDays,
                             isScheduled = true,
                             sourceEventId = eventId,
-                            memo = ""
+                            memo = safeMemo
                         )
                     )
                 }
