@@ -185,7 +185,7 @@ fun CalendarScreen(
                             text = "‹",
                             modifier = Modifier
                                 .clickable {
-                                    viewModel.moveMonth(-1) // 이전 달
+                                    viewModel.moveMonth(-1)
                                 }
                                 .padding(horizontal = 14.dp),
                             color = CalendarText,
@@ -196,7 +196,7 @@ fun CalendarScreen(
                             text = "›",
                             modifier = Modifier
                                 .clickable {
-                                    viewModel.moveMonth(1) // 다음 달
+                                    viewModel.moveMonth(1)
                                 }
                                 .padding(horizontal = 14.dp),
                             color = CalendarText,
@@ -449,23 +449,22 @@ fun CalendarScreen(
                                                                 null
                                                             }
 
-                                                        val displayName =
+                                                        // 실제 기록은 메모 + 일정 이름 순서
+                                                        val displayText =
                                                             if (event.isScheduled) {
                                                                 val prefix = sourceEvent?.memo?.trim().orEmpty()
+
                                                                 if (prefix.isNotBlank()) {
                                                                     "$prefix ${event.eventName}예정일"
                                                                 } else {
                                                                     "${event.eventName} 예정일"
                                                                 }
                                                             } else {
-                                                                event.eventName
-                                                            }
-
-                                                        val displayText =
-                                                            if (!event.isScheduled && event.memo.isNotBlank()) {
-                                                                "$displayName ${event.memo.trim()}"
-                                                            } else {
-                                                                displayName
+                                                                if (event.memo.isNotBlank()) {
+                                                                    "${event.memo.trim()} ${event.eventName}"
+                                                                } else {
+                                                                    event.eventName
+                                                                }
                                                             }
 
                                                         Text(
@@ -661,6 +660,8 @@ private fun EventItem(
     sourceMemo: String = "",
     onLongClick: () -> Unit
 ) {
+    // 실제 기록은 메모 + 일정 이름 순서
+    // 예정 일정은 기존 표시 방식 유지
     val displayName = if (event.isScheduled) {
         val memoPrefix = sourceMemo.trim()
 
@@ -670,7 +671,11 @@ private fun EventItem(
             "${event.eventName} 예정일"
         }
     } else {
-        event.eventName
+        if (event.memo.isNotBlank()) {
+            "${event.memo.trim()} ${event.eventName}"
+        } else {
+            event.eventName
+        }
     }
 
     Row(
@@ -711,14 +716,6 @@ private fun EventItem(
                 color = CalendarText,
                 fontWeight = FontWeight.Medium
             )
-
-            if (!event.isScheduled && event.memo.isNotBlank()) {
-                Text(
-                    text = event.memo,
-                    color = CalendarSubText,
-                    fontSize = 12.sp
-                )
-            }
         }
 
         Text(
