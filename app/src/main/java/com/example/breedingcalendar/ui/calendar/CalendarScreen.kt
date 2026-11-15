@@ -5,6 +5,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,15 +38,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.breedingcalendar.data.entity.CalendarEvent
 import com.example.breedingcalendar.data.entity.CustomEventType
 import java.util.Calendar
 import java.util.GregorianCalendar
+import kotlin.math.abs
 
 private val CalendarBackground = Color(0xFF121212)
 private val CalendarSurface = Color(0xFF1E1E1E)
@@ -72,9 +77,13 @@ fun CalendarScreen(
         mutableStateOf(false)
     }
 
-    // 삭제 확인 대상 일정
     var eventToDelete by remember {
         mutableStateOf<CalendarEvent?>(null)
+    }
+
+    // 달력 확장 상태
+    var isCalendarExpanded by remember {
+        mutableStateOf(false)
     }
 
     val selectedEvents = state.events.filter {
@@ -176,7 +185,7 @@ fun CalendarScreen(
                             text = "‹",
                             modifier = Modifier
                                 .clickable {
-                                    viewModel.moveMonth(-1)
+                                    viewModel.moveMonth(-1) // 이전 달
                                 }
                                 .padding(horizontal = 14.dp),
                             color = CalendarText,
@@ -187,7 +196,7 @@ fun CalendarScreen(
                             text = "›",
                             modifier = Modifier
                                 .clickable {
-                                    viewModel.moveMonth(1)
+                                    viewModel.moveMonth(1) // 다음 달
                                 }
                                 .padding(horizontal = 14.dp),
                             color = CalendarText,
@@ -259,7 +268,60 @@ fun CalendarScreen(
                     }
                 }
 
-                Column {
+                // 달력 스와이프 영역
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(
+                            isCalendarExpanded,
+                            state.currentYear,
+                            state.currentMonth
+                        ) {
+                            var dragX = 0f
+                            var dragY = 0f
+
+                            detectDragGestures(
+                                onDragStart = {
+                                    dragX = 0f
+                                    dragY = 0f
+                                },
+                                onDrag = { change, dragAmount ->
+                                    dragX += dragAmount.x
+                                    dragY += dragAmount.y
+                                    change.consume()
+                                },
+                                onDragEnd = {
+                                    val threshold = 70f
+
+                                    if (
+                                        abs(dragX) > abs(dragY) &&
+                                        abs(dragX) > threshold
+                                    ) {
+                                        // 왼쪽 스와이프: 다음 달
+                                        if (dragX < 0) {
+                                            viewModel.moveMonth(1)
+                                        }
+                                        // 오른쪽 스와이프: 이전 달
+                                        else {
+                                            viewModel.moveMonth(-1)
+                                        }
+                                    } else if (
+                                        abs(dragY) > abs(dragX) &&
+                                        abs(dragY) > threshold
+                                    ) {
+                                        // 아래 스와이프: 확장
+                                        if (dragY > 0) {
+                                            isCalendarExpanded = true
+                                        }
+                                        // 위 스와이프: 축소
+                                        else {
+                                            isCalendarExpanded = false
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                ) {
                     calendarCells.chunked(7).forEach { week ->
 
                         Row(
@@ -270,7 +332,13 @@ fun CalendarScreen(
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .aspectRatio(0.78f),
+                                        .then(
+                                            if (isCalendarExpanded) {
+                                                Modifier.height(88.dp)
+                                            } else {
+                                                Modifier.aspectRatio(0.78f)
+                                            }
+                                        ),
                                     contentAlignment = Alignment.Center
                                 ) {
 
@@ -295,14 +363,18 @@ fun CalendarScreen(
                                                 today.get(Calendar.DAY_OF_MONTH)
                                             )
 
-                                        val hasEvents =
-                                            state.events.any {
-                                                it.eventDate == date
-                                            }
+                                        val dateEvents = state.events.filter {
+                                            it.eventDate == date
+                                        }
+
+                                        val hasEvents = dateEvents.isNotEmpty()
 
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxSize()
+                                                .clip(
+                                                    RoundedCornerShape(14.dp)
+                                                )
                                                 .clickable {
                                                     viewModel.selectDate(date)
                                                     showAddDialog = true
@@ -312,14 +384,17 @@ fun CalendarScreen(
                                                         CalendarSelected
                                                     } else {
                                                         Color.Transparent
-                                                    },
-                                                    shape = RoundedCornerShape(14.dp)
+                                                    }
                                                 )
-                                                .padding(vertical = 7.dp),
+                                                .padding(
+                                                    horizontal = 2.dp,
+                                                    vertical = 7.dp
+                                                ),
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                             verticalArrangement = Arrangement.Top
                                         ) {
 
+                                            // 날짜 숫자
                                             Box(
                                                 modifier = Modifier
                                                     .size(30.dp)
@@ -359,7 +434,66 @@ fun CalendarScreen(
                                                 modifier = Modifier.height(4.dp)
                                             )
 
-                                            if (hasEvents) {
+                                            if (isCalendarExpanded) {
+                                                Column(
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    dateEvents.take(2).forEach { event ->
+
+                                                        val sourceEvent =
+                                                            if (event.isScheduled) {
+                                                                state.events.firstOrNull {
+                                                                    it.id == event.sourceEventId
+                                                                }
+                                                            } else {
+                                                                null
+                                                            }
+
+                                                        val displayName =
+                                                            if (event.isScheduled) {
+                                                                val prefix = sourceEvent?.memo?.trim().orEmpty()
+                                                                if (prefix.isNotBlank()) {
+                                                                    "$prefix ${event.eventName}예정일"
+                                                                } else {
+                                                                    "${event.eventName} 예정일"
+                                                                }
+                                                            } else {
+                                                                event.eventName
+                                                            }
+
+                                                        val displayText =
+                                                            if (!event.isScheduled && event.memo.isNotBlank()) {
+                                                                "$displayName ${event.memo.trim()}"
+                                                            } else {
+                                                                displayName
+                                                            }
+
+                                                        Text(
+                                                            text = displayText,
+                                                            color = if (event.isScheduled) {
+                                                                Color(0xFFFFB74D)
+                                                            } else {
+                                                                CalendarSubText
+                                                            },
+                                                            fontSize = 8.sp,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            textAlign = TextAlign.Center,
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        )
+                                                    }
+
+                                                    if (dateEvents.size > 2) {
+                                                        Text(
+                                                            text = "...",
+                                                            color = CalendarSubText,
+                                                            fontSize = 8.sp,
+                                                            textAlign = TextAlign.Center,
+                                                            modifier = Modifier.fillMaxWidth()
+                                                        )
+                                                    }
+                                                }
+                                            } else if (hasEvents) {
                                                 Box(
                                                     modifier = Modifier
                                                         .size(5.dp)
@@ -430,7 +564,6 @@ fun CalendarScreen(
                                 event = event,
                                 sourceMemo = sourceEvent?.memo.orEmpty(),
                                 onLongClick = {
-                                    // 바로 삭제하지 않고 확인 팝업 표시
                                     eventToDelete = event
                                 }
                             )
@@ -449,12 +582,10 @@ fun CalendarScreen(
                 showAddDialog = false
             },
             onSaveCustom = { type, memo ->
-                // 메모 입력 여부와 관계없이 커스텀 일정으로 저장
                 viewModel.addEvent(type, memo)
                 showAddDialog = false
             },
             onSaveMemo = { memo ->
-                // 커스텀 일정 미선택일 때만 메모 일정으로 저장
                 viewModel.addMemoEvent(memo)
                 showAddDialog = false
             }
@@ -634,7 +765,6 @@ private fun AddEventDialog(
         text = {
             Column {
 
-                // 커스텀 일정 선택
                 Box {
                     Surface(
                         modifier = Modifier
@@ -677,7 +807,6 @@ private fun AddEventDialog(
                     modifier = Modifier.height(14.dp)
                 )
 
-                // 메모 입력
                 OutlinedTextField(
                     value = memo,
                     onValueChange = {
@@ -713,10 +842,8 @@ private fun AddEventDialog(
                     val type = selectedType
 
                     if (type != null) {
-                        // 커스텀 일정이 선택되어 있으면 메모 유무와 무관하게 실행
                         onSaveCustom(type, memo)
                     } else if (memo.isNotBlank()) {
-                        // 일정 유형을 선택하지 않은 경우 메모만 저장
                         onSaveMemo(memo)
                     }
                 },
