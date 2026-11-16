@@ -1,4 +1,3 @@
-
 package com.example.breedingcalendar.ui.calendar
 
 import androidx.compose.foundation.background
@@ -8,6 +7,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -50,6 +53,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.breedingcalendar.data.entity.CalendarEvent
 import com.example.breedingcalendar.data.entity.CustomEventType
 import java.util.Calendar
@@ -230,15 +235,9 @@ fun CalendarScreen(
                             modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Center,
                             color = when (index) {
-                                0 -> {
-                                    Color(0xFFE57373)
-                                }
-                                6 -> {
-                                    Color(0xFF64B5F6)
-                                }
-                                else -> {
-                                    CalendarSubText
-                                }
+                                0 -> Color(0xFFE57373)
+                                6 -> Color(0xFF64B5F6)
+                                else -> CalendarSubText
                             },
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
@@ -1103,165 +1102,210 @@ private fun AddEventDialog(
     val canSave = hasActualRecord ||
             (!hasAnyRecordInput && memo.isNotBlank())
 
-    AlertDialog(
+    val scrollState = rememberScrollState()
+
+    Dialog(
         onDismissRequest = onDismiss,
-        containerColor = CalendarSurface,
-        title = {
-            Text(
-                text = "일정 추가",
-                color = CalendarText,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column {
-                Text(
-                    text = "실제 기록",
-                    color = CalendarAccent,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = individualGroup,
-                    onValueChange = { individualGroup = it },
-                    label = { Text("개체 구분") },
-                    placeholder = { Text("예: 아잔틱1") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                OutlinedTextField(
-                    value = individualNumberText,
-                    onValueChange = { value ->
-                        if (value.isEmpty() || value.all { it.isDigit() }) {
-                            individualNumberText = value
-                        }
-                    },
-                    label = { Text("번호") },
-                    placeholder = { Text("예: 1") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Text(
-                    text = "자동 생성할 커스텀 일정",
-                    color = CalendarAccent,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                if (customEventTypes.isEmpty()) {
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false
+        )
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .padding(
+                    top = 80.dp,
+                    bottom = 16.dp
+                ),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .heightIn(max = maxHeight - 16.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = CalendarSurface
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
                     Text(
-                        text = "등록된 커스텀 일정이 없습니다.",
-                        color = CalendarSubText,
-                        fontSize = 12.sp
+                        text = "일정 추가",
+                        color = CalendarText,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
                     )
-                } else {
-                    customEventTypes.forEach { type ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    if (type.id in selectedTypeIds) {
-                                        selectedTypeIds.remove(type.id)
-                                    } else {
-                                        selectedTypeIds.add(type.id)
-                                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .verticalScroll(scrollState)
+                    ) {
+                        Text(
+                            text = "실제 기록",
+                            color = CalendarAccent,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = individualGroup,
+                            onValueChange = { individualGroup = it },
+                            label = { Text("개체 구분") },
+                            placeholder = { Text("예: 아잔틱1") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedTextField(
+                            value = individualNumberText,
+                            onValueChange = { value ->
+                                if (
+                                    value.isEmpty() ||
+                                    value.all { it.isDigit() }
+                                ) {
+                                    individualNumberText = value
                                 }
-                                .padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = type.id in selectedTypeIds,
-                                onCheckedChange = { checked ->
-                                    if (checked) {
-                                        if (type.id !in selectedTypeIds) {
-                                            selectedTypeIds.add(type.id)
-                                        }
-                                    } else {
-                                        selectedTypeIds.remove(type.id)
-                                    }
-                                }
+                            },
+                            label = { Text("번호") },
+                            placeholder = { Text("예: 1") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "자동 생성할 커스텀 일정",
+                            color = CalendarAccent,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        if (customEventTypes.isEmpty()) {
+                            Text(
+                                text = "등록된 커스텀 일정이 없습니다.",
+                                color = CalendarSubText,
+                                fontSize = 12.sp
                             )
+                        } else {
+                            customEventTypes.forEach { type ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (type.id in selectedTypeIds) {
+                                                selectedTypeIds.remove(type.id)
+                                            } else {
+                                                selectedTypeIds.add(type.id)
+                                            }
+                                        }
+                                        .padding(vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(
+                                        checked = type.id in selectedTypeIds,
+                                        onCheckedChange = { checked ->
+                                            if (checked) {
+                                                if (type.id !in selectedTypeIds) {
+                                                    selectedTypeIds.add(type.id)
+                                                }
+                                            } else {
+                                                selectedTypeIds.remove(type.id)
+                                            }
+                                        }
+                                    )
 
-                            Column {
-                                Text(
-                                    text = type.name,
-                                    color = CalendarText
-                                )
+                                    Column {
+                                        Text(
+                                            text = type.name,
+                                            color = CalendarText
+                                        )
 
-                                Text(
-                                    text = if (type.repeatIntervalDays > 0) {
-                                        "${type.repeatIntervalDays}일 후 일정 생성"
-                                    } else {
-                                        "자동 일정 생성 안 함"
-                                    },
-                                    color = CalendarSubText,
-                                    fontSize = 11.sp
-                                )
+                                        Text(
+                                            text = if (type.repeatIntervalDays > 0) {
+                                                "${type.repeatIntervalDays}일 후 일정 생성"
+                                            } else {
+                                                "자동 일정 생성 안 함"
+                                            },
+                                            color = CalendarSubText,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
                             }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedTextField(
+                            value = memo,
+                            onValueChange = { memo = it },
+                            label = { Text("메모") },
+                            placeholder = { Text("예: 산란") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Text(
+                            text = "선택한 커스텀 일정은 각각 설정된 주기로 생성됩니다.",
+                            color = CalendarSubText,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = onDismiss
+                        ) {
+                            Text(
+                                "취소",
+                                color = CalendarSubText
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                if (hasActualRecord) {
+                                    onSaveCustom(
+                                        selectedTypes,
+                                        individualGroup,
+                                        individualNumber,
+                                        memo
+                                    )
+                                } else if (
+                                    !hasAnyRecordInput &&
+                                    memo.isNotBlank()
+                                ) {
+                                    onSaveMemo(memo)
+                                }
+                            },
+                            enabled = canSave
+                        ) {
+                            Text("저장")
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                OutlinedTextField(
-                    value = memo,
-                    onValueChange = { memo = it },
-                    label = { Text("메모") },
-                    placeholder = { Text("예: 산란") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                Text(
-                    text = "선택한 커스텀 일정은 각각 설정된 주기로 생성됩니다.",
-                    color = CalendarSubText,
-                    fontSize = 12.sp
-                )
             }
-        },
-        confirmButton = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = onDismiss
-                ) {
-                    Text("취소")
-                }
-
-                Button(
-                    onClick = {
-                        if (hasActualRecord) {
-                            onSaveCustom(
-                                selectedTypes,
-                                individualGroup,
-                                individualNumber,
-                                memo
-                            )
-                        } else if (!hasAnyRecordInput && memo.isNotBlank()) {
-                            onSaveMemo(memo)
-                        }
-                    },
-                    enabled = canSave
-                ) {
-                    Text("저장")
-                }
-            }
-        },
-        dismissButton = {}
-    )
+        }
+    }
 }
 
 @Composable
