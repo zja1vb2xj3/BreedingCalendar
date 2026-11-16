@@ -439,7 +439,7 @@ fun CalendarScreen(
                                                             }
 
                                                         Text(
-                                                            text = eventDisplayText(event),
+                                                            text = calendarDayEventDisplayText(event),
                                                             color = eventTextColor,
                                                             fontSize = 8.sp,
                                                             fontWeight = FontWeight.Bold,
@@ -960,38 +960,44 @@ private fun DeleteCustomEventTypeDialog(
     )
 }
 
-private fun eventDisplayText(event: CalendarEvent): String {
-    return if (event.isScheduled) {
-        val prefix = event.memo.ifBlank {
-            listOf(
-                event.individualGroup,
-                event.individualNumber?.toString().orEmpty()
-            ).filter { it.isNotBlank() }
-                .joinToString(" ")
-        }
+// 캘린더 날짜 칸
+private fun calendarDayEventDisplayText(event: CalendarEvent): String {
+    val prefix = listOf(
+        event.individualGroup,
+        event.individualNumber?.toString().orEmpty()
+    )
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
 
-        listOf(
-            prefix,
-            "${event.eventName}"
-        ).filter { it.isNotBlank() }
-            .joinToString(" ")
+    val suffix = if (event.isScheduled) {
+        event.eventName
     } else {
-        val prefix = listOf(
-            event.individualGroup,
-            event.individualNumber?.toString().orEmpty()
-        ).filter { it.isNotBlank() }
-            .joinToString(" ")
-
-        if (prefix.isNotBlank()) {
-            listOf(
-                prefix,
-                event.memo
-            ).filter { it.isNotBlank() }
-                .joinToString(" ")
-        } else {
-            "${event.memo}".trim()
-        }
+        event.memo
     }
+
+    return listOf(prefix, suffix)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+}
+
+// Select Day
+private fun customDayDisplayText(event: CalendarEvent): String {
+    val prefix = listOf(
+        event.individualGroup,
+        event.individualNumber?.toString().orEmpty()
+    )
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
+
+    val suffix = if (event.isScheduled) {
+        event.eventName
+    } else {
+        event.memo
+    }
+
+    return listOf(prefix, suffix)
+        .filter { it.isNotBlank() }
+        .joinToString(" ")
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1000,7 +1006,7 @@ private fun EventItem(
     event: CalendarEvent,
     onLongClick: () -> Unit
 ) {
-    val displayName = eventDisplayText(event)
+    val displayName = customDayDisplayText(event)
 
     val textColor = if (event.isScheduled) {
         EventScheduledColor

@@ -53,6 +53,20 @@ class CalendarViewModel(application: Application) :
     private fun observeEvents() {
         viewModelScope.launch {
             dao.getAllEvents().collect { events ->
+
+                events.forEach { event ->
+                    android.util.Log.d(
+                        "CalendarEventDebug",
+                        "id=${event.id}, " +
+                                "date=${event.eventDate}, " +
+                                "name=${event.eventName}, " +
+                                "scheduled=${event.isScheduled}, " +
+                                "group=${event.individualGroup}, " +
+                                "number=${event.individualNumber}, " +
+                                "memo=${event.memo}"
+                    )
+                }
+
                 _uiState.value = _uiState.value.copy(
                     events = events
                 )
@@ -179,13 +193,7 @@ class CalendarViewModel(application: Application) :
         }
     }
 
-    private fun createScheduledMemo(
-        individualGroup: String,
-        individualNumber: Int
-    ): String {
-        return "$individualGroup $individualNumber"
-    }
-
+    // 실제 기록 및 자동 생성 일정 등록
     fun addEvent(
         types: List<CustomEventType>,
         individualGroup: String,
@@ -198,26 +206,7 @@ class CalendarViewModel(application: Application) :
 
         if (safeGroup.isBlank()) return
 
-        // 실제 등록일에는 첫 번째 커스텀 일정 이름만 사용
-        val firstSelectedTypeName = types
-            .map { it.name }
-            .distinct()
-            .firstOrNull()
-
-        val recordMemoParts = mutableListOf<String>()
-
-        if (!firstSelectedTypeName.isNullOrBlank()) {
-            recordMemoParts.add(firstSelectedTypeName)
-        }
-
-        if (
-            safeMemo.isNotBlank() &&
-            safeMemo !in recordMemoParts
-        ) {
-            recordMemoParts.add(safeMemo)
-        }
-
-        val recordMemo = recordMemoParts.joinToString(" ")
+        // 등록일에 표시할 첫 번째 커스텀 일정명
 
         viewModelScope.launch {
             database.withTransaction {
@@ -231,11 +220,11 @@ class CalendarViewModel(application: Application) :
                         isScheduled = false,
                         individualGroup = safeGroup,
                         individualNumber = individualNumber,
-                        memo = recordMemo
+                        memo = safeMemo
                     )
                 )
 
-                // 예정 일정은 선택한 커스텀 일정 전체를 대상으로 생성
+                // 선택한 모든 커스텀 일정의 자동 생성
                 val scheduledEvents = types
                     .filter { it.repeatIntervalDays > 0 }
                     .map { type ->
@@ -243,11 +232,6 @@ class CalendarViewModel(application: Application) :
                         val scheduledNumber =
                             individualNumber +
                                     if (type.incrementNumber) 1 else 0
-
-                        val scheduledMemo = createScheduledMemo(
-                            individualGroup = safeGroup,
-                            individualNumber = scheduledNumber
-                        )
 
                         CalendarEvent(
                             eventName = type.name,
@@ -258,7 +242,7 @@ class CalendarViewModel(application: Application) :
                             sourceEventId = eventId,
                             individualGroup = safeGroup,
                             individualNumber = scheduledNumber,
-                            memo = scheduledMemo
+                            memo = safeMemo
                         )
                     }
 
@@ -269,6 +253,7 @@ class CalendarViewModel(application: Application) :
         }
     }
 
+    // 메모만 등록
     fun addMemoEvent(memo: String) {
         val safeMemo = memo.trim()
 
