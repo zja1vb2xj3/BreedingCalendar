@@ -1,7 +1,6 @@
 
 package com.example.breedingcalendar.ui.calendar
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -90,7 +89,7 @@ fun CalendarScreen(
 
     var menuExpanded by remember { mutableStateOf(false) }
     var eventToDelete by remember { mutableStateOf<CalendarEvent?>(null) }
-    var isCalendarExpanded by remember { mutableStateOf(false) }
+    var isCalendarExpanded by remember { mutableStateOf(true) }
 
     val selectedEvents = state.events.filter {
         it.eventDate == state.selectedDate
@@ -230,12 +229,16 @@ fun CalendarScreen(
                             text = day,
                             modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Center,
-                            color = if (index == 0) {
-                                Color(0xFFE57373)
-                            } else if (index == 6) {
-                                Color(0xFF64B5F6)
-                            } else {
-                                CalendarSubText
+                            color = when (index) {
+                                0 -> {
+                                    Color(0xFFE57373)
+                                }
+                                6 -> {
+                                    Color(0xFF64B5F6)
+                                }
+                                else -> {
+                                    CalendarSubText
+                                }
                             },
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium
@@ -1000,7 +1003,6 @@ private fun customDayDisplayText(event: CalendarEvent): String {
         .joinToString(" ")
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun EventItem(
     event: CalendarEvent,
@@ -1245,7 +1247,7 @@ private fun AddEventDialog(
                             onSaveCustom(
                                 selectedTypes,
                                 individualGroup,
-                                individualNumber!!,
+                                individualNumber,
                                 memo
                             )
                         } else if (!hasAnyRecordInput && memo.isNotBlank()) {
